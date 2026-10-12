@@ -25,6 +25,7 @@
     border-top:1px solid #21262d; padding-top:22px; }
   .cmd { font-size:26px; color:#3fb950; font-weight:700; }
   .cmd::before { content:"$ "; color:#8b949e; }
+  .note { font-size:15px; color:#6e7681; text-align:center; }
   .gh { font-size:17px; color:#6e7681; }
 </style>
 <body>
@@ -32,19 +33,20 @@
 <div class="frame">
   <div class="brand">AGENT&nbsp;TRIALS<em> // interview your coding agent</em></div>
   <div class="mid">
-    <div class="grade">3/3<small> haiku</small></div>
+    <div class="grade">3<small> tasks</small></div>
     <div class="block">
-      <div class="big">the cheap model <b>passed everything.</b><br>it also spent the most.</div>
+      <div class="big">A smoke-test runner<br>for coding agents.</div>
       <div class="sub">same 3 tasks through claude / codex / gemini or any CLI - your repo, your tasks, your verify command</div>
     </div>
   </div>
   <div class="findings">
-    <div class="chip"><i>sandboxed</i> runs, working tree untouched</div>
+    <div class="chip"><i>trusted</i> suites only</div>
     <div class="chip">pass = <i>your</i> verify exits 0</div>
     <div class="chip"><i>cost</i> per task, when reported</div>
   </div>
   <div class="foot">
     <div class="cmd">npx agent-trials</div>
+    <div class="note">Temporary working copies.<br>Host execution, not security isolation.</div>
     <div class="gh">github.com/princejain756/agent-trials</div>
   </div>
 </div>

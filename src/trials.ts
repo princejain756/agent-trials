@@ -13,6 +13,7 @@ export interface Suite {
   name?: string;
   setup?: string;
   verify?: string;
+  verifyPaths?: string[];
   timeoutSec?: number;
   tasks: TrialTask[];
   agents?: Record<string, { run: string[]; resultJson?: boolean }>;
@@ -26,6 +27,8 @@ export interface Cell {
   verifyExit: number | null;
   sec: number;
   costUsd?: number;
+  modelUsed?: string;
+  verifyRestored?: string[];
   error?: string;
 }
 
@@ -53,6 +56,9 @@ export function loadSuite(file: string): Suite {
   for (const t of raw.tasks) {
     if (!t.id || !t.prompt) throw new Error(`${file}: every task needs "id" and "prompt"`);
     if (!t.verify && !raw.verify) throw new Error(`${file}: task "${t.id}" has no verify and suite has no default`);
+  }
+  if (raw.verifyPaths !== undefined && !Array.isArray(raw.verifyPaths)) {
+    throw new Error(`${file}: "verifyPaths" must be an array of repo-relative paths`);
   }
   return raw as Suite;
 }
@@ -122,14 +128,33 @@ function runCmd(argv: string[], cwd: string, timeoutMs: number): Promise<CmdResu
   });
 }
 
-function parseAgentJson(stdout: string): { costUsd?: number } {
+function parseAgentJson(stdout: string): { costUsd?: number; modelUsed?: string } {
   try {
     const j = JSON.parse(stdout.trim());
     const cost = j.total_cost_usd ?? j.cost_usd ?? j.stats?.total_cost_usd;
-    return typeof cost === "number" ? { costUsd: cost } : {};
+    const model = j.model ?? Object.keys(j.modelUsage ?? {})[0];
+    const out: { costUsd?: number; modelUsed?: string } = {};
+    if (typeof cost === "number") out.costUsd = cost;
+    if (typeof model === "string" && model) out.modelUsed = model;
+    return out;
   } catch {
     return {};
   }
+}
+
+// The checker files are restored from the source repo after the agent runs,
+// so an agent cannot rewrite its own test. The suite marks them with
+// verifyPaths; a top-level verify/ dir is the convention fallback.
+function protectedPaths(root: string, suite: Suite): string[] {
+  const rels =
+    suite.verifyPaths ?? (existsSync(path.join(root, "verify")) ? ["verify"] : []);
+  return rels.filter(
+    (rel) =>
+      !path.isAbsolute(rel) &&
+      !rel.split(/[\\/]+/).includes("..") &&
+      !SKIP_DIRS.has(rel.split(/[\\/]+/)[0]) &&
+      existsSync(path.join(root, rel)),
+  );
 }
 
 export interface RunOpts {
@@ -181,6 +206,11 @@ export async function runSuite(opts: RunOpts): Promise<Cell[]> {
           out.error = agentRes.timedOut ? "timeout" : `spawn failed: ${agentRes.stderr.slice(-160)}`;
         }
         const verifyCmd = task.verify ?? suite.verify!;
+        const restored = protectedPaths(root, suite);
+        for (const rel of restored) {
+          cpSync(path.join(root, rel), path.join(sandbox, rel), { recursive: true });
+        }
+        if (restored.length) out.verifyRestored = restored;
         const v = await runCmd(["sh", "-c", verifyCmd], sandbox, timeoutMs);
         out.verifyExit = v.code;
         out.pass = out.agentExit === 0 && v.code === 0;

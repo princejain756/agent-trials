@@ -15,7 +15,7 @@ import {
   type Suite,
 } from "./trials.js";
 
-const VERSION = "1.0.0";
+const VERSION = "1.0.1";
 
 const HELP = `agent-trials ${VERSION}
 Interview your coding agent before you ship with it.
@@ -32,7 +32,7 @@ run flags:
   --jobs <n>        parallel cells (default: 2)
   --out <file>      markdown report path (default: TRIALS.md, "none" skips)
   --json <file>     also write raw results JSON
-  --keep            keep sandbox dirs for debugging
+  --keep            keep working copies for debugging
 `;
 
 const STARTER_SUITE = {
