@@ -1,0 +1,62 @@
+{
+  "name": "tinylib suite",
+  "timeoutSec": 300,
+  "tasks": [
+    {
+      "id": "fix-clamp",
+      "prompt": "Edit lib.js: clamp(n, lo, hi) is buggy and can return values outside [lo, hi]. Fix the function body so clamp(15, 0, 10) === 10, clamp(-5, 0, 10) === 0, clamp(5, 0, 10) === 5. Edit the file directly.",
+      "verify": "node verify/fix-clamp.mjs"
+    },
+    {
+      "id": "divide-guard",
+      "prompt": "Edit lib.js: in divide(a, b), throw a RangeError when b === 0. Leave all other inputs and functions unchanged. Edit the file directly.",
+      "verify": "node verify/divide-guard.mjs"
+    },
+    {
+      "id": "slug-test",
+      "prompt": "Create the file test/slug.test.mjs. It must import slugify from ../lib.js and assert at least 3 cases covering spaces, mixed case, and punctuation, using node:assert. Write the file so that `node test/slug.test.mjs` exits 0.",
+      "verify": "node verify/slug-test.mjs"
+    }
+  ],
+  "agents": {
+    "opus": {
+      "run": [
+        "claude",
+        "-p",
+        "{prompt}",
+        "--dangerously-skip-permissions",
+        "--output-format",
+        "json",
+        "--model",
+        "opus"
+      ],
+      "resultJson": true
+    },
+    "sonnet": {
+      "run": [
+        "claude",
+        "-p",
+        "{prompt}",
+        "--dangerously-skip-permissions",
+        "--output-format",
+        "json",
+        "--model",
+        "sonnet"
+      ],
+      "resultJson": true
+    },
+    "haiku": {
+      "run": [
+        "claude",
+        "-p",
+        "{prompt}",
+        "--dangerously-skip-permissions",
+        "--output-format",
+        "json",
+        "--model",
+        "haiku"
+      ],
+      "resultJson": true
+    }
+  }
+}

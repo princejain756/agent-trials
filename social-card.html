@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>agent-trials social card</title>
+<style>
+  * { margin:0; box-sizing:border-box; }
+  body { width:1200px; height:630px; background:#0a0c0f; color:#e6edf3;
+    font-family:-apple-system,"SF Mono",Menlo,monospace; overflow:hidden; position:relative; }
+  .scan { position:absolute; inset:0;
+    background:repeating-linear-gradient(0deg,transparent 0 3px,rgba(88,166,255,.03) 3px 4px); }
+  .frame { position:absolute; inset:48px; display:flex; flex-direction:column; }
+  .brand { font-size:20px; letter-spacing:.28em; color:#58a6ff; font-weight:600; }
+  .brand em { font-style:normal; color:#8b949e; }
+  .mid { display:flex; align-items:center; gap:52px; margin:36px 0 30px; }
+  .grade { font-size:170px; font-weight:800; color:#e3b341; line-height:.9;
+    text-shadow:0 0 60px rgba(227,179,65,.3); }
+  .grade small { font-size:52px; color:#8b949e; font-weight:700; }
+  .block .big { font-size:44px; font-weight:700; line-height:1.15; }
+  .block .big b { color:#f85149; }
+  .block .sub { margin-top:14px; font-size:19px; color:#8b949e; }
+  .findings { display:flex; gap:14px; margin-top:8px; }
+  .chip { border:1px solid #30363d; border-radius:999px; padding:9px 18px;
+    font-size:17px; color:#c9d1d9; background:#111418; }
+  .chip i { font-style:normal; color:#d29922; }
+  .foot { margin-top:auto; display:flex; justify-content:space-between; align-items:flex-end;
+    border-top:1px solid #21262d; padding-top:22px; }
+  .cmd { font-size:26px; color:#3fb950; font-weight:700; }
+  .cmd::before { content:"$ "; color:#8b949e; }
+  .gh { font-size:17px; color:#6e7681; }
+</style>
+<body>
+<div class="scan"></div>
+<div class="frame">
+  <div class="brand">AGENT&nbsp;TRIALS<em> // interview your coding agent</em></div>
+  <div class="mid">
+    <div class="grade">3/3<small> haiku</small></div>
+    <div class="block">
+      <div class="big">same 3 tasks, 3 models.<br>the cheap one <b>passed everything</b> - and spent the most</div>
+      <div class="sub">scoreboard for claude / codex / gemini or any CLI - your repo, your tasks, your verify command</div>
+    </div>
+  </div>
+  <div class="findings">
+    <div class="chip"><i>sandboxed</i> runs, working tree untouched</div>
+    <div class="chip">pass = <i>your</i> verify exits 0</div>
+    <div class="chip"><i>cost</i> per task, when reported</div>
+  </div>
+  <div class="foot">
+    <div class="cmd">npx agent-trials</div>
+    <div class="gh">github.com/princejain756/agent-trials</div>
+  </div>
+</div>
+</body>

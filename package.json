@@ -1,0 +1,40 @@
+{
+  "name": "agent-trials",
+  "version": "1.0.0",
+  "description": "Interview your coding agent before you ship with it. Run the same tasks through every agent CLI you have installed and get a scoreboard.",
+  "type": "module",
+  "bin": {
+    "agent-trials": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepare": "npm run build",
+    "test": "node test/run.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "ai-agents",
+    "evals",
+    "benchmark",
+    "claude-code",
+    "codex",
+    "gemini-cli",
+    "coding-agents",
+    "llm"
+  ],
+  "author": "Prince Jain",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/princejain756/agent-trials.git"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2"
+  }
+}

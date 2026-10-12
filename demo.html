@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { margin: 0; background: #0b0e14; display: flex; align-items: center; justify-content: center; min-height: 100vh; font-family: "SF Mono", Menlo, monospace; }
+  .term { width: 980px; margin: 40px; border-radius: 12px; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,.6); background: #0d1117; border: 1px solid #21262d; }
+  .bar { display: flex; gap: 8px; padding: 14px 16px; background: #161b22; border-bottom: 1px solid #21262d; align-items: center; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .r { background: #ff5f57; } .y { background: #febc2e; } .g { background: #28c840; }
+  .title { margin-left: 12px; color: #7d8590; font-size: 13px; }
+  pre { margin: 0; padding: 28px 32px 34px; font-size: 16.5px; line-height: 1.62; color: #c9d1d9; }
+  .p { color: #79c0ff; } .dim { color: #7d8590; }
+  .big { color: #e3b341; font-weight: 700; }
+  .pass { color: #3fb950; } .fail { color: #f85149; }
+  .flag { color: #ffa198; }
+</style>
+</head>
+<body>
+<div class="term">
+  <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">zsh</span></div>
+<pre><span class="p">$</span> npx agent-trials run --agents opus,sonnet,haiku
+
+<span class="dim">agent-trials · 3 tasks · 3 agents</span>
+
+                  opus      sonnet       haiku
+fix-clamp    <span class="pass">pass 141.3s</span>  <span class="pass">pass 44.2s</span>   <span class="pass">pass 60.9s</span>
+divide-guard <span class="fail">fail 96.1s</span>   <span class="pass">pass 72.1s</span>  <span class="pass">pass 118.6s</span>
+slug-test    <span class="pass">pass 253.4s</span>  <span class="fail">fail 124.4s</span>   <span class="pass">pass 50s</span>
+
+score              2/3         2/3           <span class="big">3/3</span>
+median          141.3s       72.1s         60.9s
+cost             $1.11       $1.10         <span class="flag">$2.06</span>
+
+<span class="big">winner: haiku (3/3, median 60.9s)</span>
+
+<span class="dim">the cheapest model passed everything. and still spent the most.</span>
+
+<span class="p">$</span> <span class="dim">|</span></pre>
+</div>
+</body>
+</html>
