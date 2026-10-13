@@ -1,6 +1,6 @@
 # agent-trials
 
-![agent-trials: a checker you own, that the agent cannot edit](hero.png)
+![agent-trials: a checker you own, that the agent cannot edit](https://raw.githubusercontent.com/princejain756/agent-trials/main/hero.png)
 
 Interview your coding agent before you ship with it.
 
@@ -88,7 +88,7 @@ The `--unsafe` gate is not limited to the builtins. Any agent whose argv contain
 
 `examples/tinylib` is a 3-function library with planted bugs. Same 3 tasks, 3 model variants of the same agent CLI (`claude --model`):
 
-![a real agent-trials run, including the served-model warning](demo.png)
+![a real agent-trials run, including the served-model warning](https://raw.githubusercontent.com/princejain756/agent-trials/main/demo.png)
 
 ```
 agent-trials · 3 tasks · 3 agents

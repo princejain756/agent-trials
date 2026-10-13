@@ -18,7 +18,7 @@ import {
   type Suite,
 } from "./trials.js";
 
-const VERSION = "1.2.0";
+const VERSION = "1.2.1";
 
 const HELP = `agent-trials ${VERSION}
 Interview your coding agent before you ship with it.
