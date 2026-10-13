@@ -78,7 +78,7 @@ Each cell (agent x task) works like this:
 4. checker paths are restored from your repo, so the agent cannot rewrite its own test
 5. your `verify` command runs in the working copy; exit 0 means pass
 
-Step 4 restores `verifyPaths` from the suite, or a top-level `verify/` dir when `verifyPaths` is not set. A verify command that reads mutable state outside those paths can still be gamed; put your checkers in `verify/` or list them.
+Step 4 restores `verifyPaths` from the suite, or a top-level `verify/` dir when `verifyPaths` is not set. For a checker outside those paths, the tool fingerprints every file the verify command names before the agent runs and fails the cell if one changed or appeared, so an agent cannot pass by rewriting the script that grades it. This means a verify command must not run a file the agent is supposed to create. If your check needs a file the agent writes, read it from the verify command instead of exec'ing it.
 
 Builtin agents: `claude`, `codex`, `gemini`. Custom agents are one argv array away: anything installed, any flags, `{prompt}` gets replaced with the task prompt.
 
@@ -91,25 +91,34 @@ The `--unsafe` gate is not limited to the builtins. Any agent whose argv contain
 ```
 agent-trials · 3 tasks · 3 agents
 
-                  opus      sonnet       haiku
-fix-clamp    pass 141.3s  pass 44.2s   pass 60.9s
-divide-guard  fail 96.1s  pass 72.1s  pass 118.6s
-slug-test    pass 253.4s  fail 124.4s    pass 50s
+                      opus      sonnet       haiku
+fix-clamp         pass 42s  pass 35.6s  pass 44.1s
+divide-guard      pass 39s  pass 30.9s  pass 34.7s
+slug-test       fail 25.9s  pass 63.1s    pass 38s
 
-score              2/3         2/3           3/3
-median          141.3s       72.1s         60.9s
-cost             $1.11       $1.10         $2.06
-
-winner: haiku (3/3, median 60.9s)
+score                  2/3         3/3         3/3
+median                 39s       35.6s         38s
+cost                 $2.20       $0.93       $1.74
 ```
 
-Read this board with caveats. `opus`, `sonnet`, and `haiku` are requested CLI aliases; that run predates model-identity capture (`--json` now records `modelUsed` per cell when the agent CLI reports it). One run of three toy tasks is a smoke test, not a comparative benchmark. Costs are CLI-reported, not invoice costs.
+An agent name is not a model. I ran an earlier version of this board and it read "haiku wins," so I wrote it up. Then `--json` started recording the model each cell was actually served, and the haiku column turned out to be `claude-sonnet-4-6`. The label was a lie the tool could not see yet, so the tool now prints what every column was served and warns when the label does not match:
+
+```
+models actually served:
+  opus -> claude-opus-5-5
+  sonnet -> claude-sonnet-5-5
+  haiku -> claude-sonnet-4-6
+
+  note: the column "haiku" was served claude-sonnet-4-6. An agent name is not a model.
+  Label the column with the model you requested if you publish this board.
+```
+
+The board above is one run of three toy tasks. Re-running the same suite flips cells: `opus` failed `slug-test` in this run and passed it in the next one, and a run of the older suite moved two cells. These tasks are too small to rank models, and the columns are not three tiers of one model anyway. Treat the board as a smoke test that the tool works end to end.
 
 What the board caught:
 
-- haiku went 3/3 with the fastest median while spending the most: $2.06. Pass rate and price did not move together.
+- `slug-test` is where the checker turned out to matter more than the model, but not in the direction I first wrote down. The shipped checker used to run the agent's own test file and trust its exit code, so a file containing `console.log("ok")` scored a pass even though the deliverable was never written. It now requires at least three real assertions in that file and independently asserts `slugify` behavior against the agent's `lib.js`. A do-nothing agent that used to pass now fails, and a correct test still passes. That is a statement about the checker, not about any model: I watched `opus` both fail and pass this task across two runs.
 - in one earlier run, the agent asked a clarifying question ("should -0 count as zero?") into an empty terminal, then exited 0 having changed nothing. One observed example, not a general claim. This showed why exit code alone cannot be the verdict; the verify command is what counts.
-- sonnet failed slug-test.
 
 Full results with per-cell costs: [LEADERBOARD.md](LEADERBOARD.md)
 
@@ -120,6 +129,7 @@ Full results with per-cell costs: [LEADERBOARD.md](LEADERBOARD.md)
 - agent CLIs must be installed and logged in
 - macOS/Linux; the working copy and verify assume `sh`. Windows untested
 - scoring is binary per task. No partial credit for "almost fixed it"
+- a verify command that reads state outside the files it names (a network call, a global cache, a timestamp) can still be gamed. Fingerprinting covers the scripts the command mentions, not everything it touches.
 - the working copy is not a security sandbox. Credentials and secret files are withheld, but the agent still runs as your user on your machine. Use a disposable VM
 
 ## flags
@@ -135,6 +145,8 @@ Full results with per-cell costs: [LEADERBOARD.md](LEADERBOARD.md)
 | `--keep` | off | keep working copies under /tmp for debugging |
 | `--unsafe` | off | allow builtin agents to run with approval prompts disabled |
 | `--allow-secrets` | off | copy secret-looking files into the workdir |
+
+Flags are strict: an unknown flag, a repeated flag, a bare positional argument, or a value flag with no value all stop the run with a message instead of being ignored. If you typo `--job` for `--jobs`, you hear about it.
 
 ## why the suite format is the point
 

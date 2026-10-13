@@ -1,6 +1,6 @@
 {
   "name": "agent-trials",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Interview your coding agent before you ship with it. Run the same tasks through every agent CLI you have installed and get a scoreboard.",
   "type": "module",
   "bin": {

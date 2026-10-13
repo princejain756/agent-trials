@@ -18,7 +18,7 @@ import {
   type Suite,
 } from "./trials.js";
 
-const VERSION = "1.1.0";
+const VERSION = "1.2.0";
 
 const HELP = `agent-trials ${VERSION}
 Interview your coding agent before you ship with it.
@@ -42,6 +42,8 @@ run flags:
 
 const STARTER_SUITE = {
   name: "my repo trials",
+  // Left blank on purpose: a setup command runs once per working copy before the
+  // agent does, so it is where dependency installs belong (npm ci, pip install).
   setup: "",
   verify: "npm test",
   timeoutSec: 600,
@@ -49,24 +51,48 @@ const STARTER_SUITE = {
     {
       id: "example-task",
       prompt: "Describe what this repo does in one sentence, then make the smallest possible improvement to the README.",
-      verify: "git diff --quiet || true",
+      // Must be able to FAIL when the work was not done. `git diff --quiet`
+      // exits 1 on any change, so prefixing it with `|| true` would pass
+      // unconditionally and teach a checker that checks nothing. This form
+      // requires an actual change to README.md.
+      verify: "git diff --quiet -- README.md && exit 1 || exit 0",
     },
   ],
   agents: {},
 };
 
+// Which flags take a value, and which commands they belong to. Without this the
+// parser guesses: it treated `--out --agents sleeper` as `--out=true` and
+// `--root --out none` as `--root="--out"`, silently dropping the rest of the
+// command line. A typo'd flag was ignored entirely and the run continued with
+// defaults, which is worse than refusing.
+const VALUE_FLAGS = new Set(["suite", "agents", "root", "jobs", "out", "json"]);
+const BOOL_FLAGS = new Set(["help", "version", "force", "keep", "unsafe", "allow-secrets"]);
+const ALL_FLAGS = new Set([...VALUE_FLAGS, ...BOOL_FLAGS]);
+
 function parseArgs(argv: string[]): Record<string, string | boolean> {
   const out: Record<string, string | boolean> = {};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a.startsWith("--")) {
-      const key = a.slice(2);
-      if (i + 1 < argv.length && !argv[i + 1].startsWith("--")) {
-        out[key] = argv[++i];
-      } else {
-        out[key] = true;
-      }
+    if (!a.startsWith("--")) {
+      fail(`unexpected argument "${a}" (flags start with --)`);
     }
+    const key = a.slice(2);
+    if (!ALL_FLAGS.has(key)) {
+      fail(`unknown flag "--${key}". known flags: ${[...ALL_FLAGS].map((f) => "--" + f).join(", ")}`);
+    }
+    if (out[key] !== undefined) {
+      fail(`--${key} was given more than once`);
+    }
+    if (BOOL_FLAGS.has(key)) {
+      out[key] = true;
+      continue;
+    }
+    const next = argv[i + 1];
+    if (next === undefined || next.startsWith("--")) {
+      fail(`--${key} needs a value, got ${next === undefined ? "nothing" : `"${next}"`}`);
+    }
+    out[key] = argv[++i];
   }
   return out;
 }
@@ -193,14 +219,43 @@ async function main() {
       onCell: (c: Cell) => {
         const verdict = verdictOf(c);
         console.log(`  [${verdict}] ${c.agent} · ${c.task} · ${c.sec}s`);
+        if (c.checkersTampered) {
+          console.log(`        the agent touched its own checker: ${c.checkersTampered.join(", ")}`);
+        }
       },
     });
     console.log("");
     const board = renderBoard(suite, results, names);
     console.log(board);
+
+    // The column header is an agent name, but an agent name is not a model. A
+    // custom agent can pass --model haiku and be served claude-sonnet-4-6 (that
+    // happened here, and the board was published before anyone noticed). Print
+    // what actually ran, so a mismatched label shows up in the output rather
+    // than staying buried in the JSON.
+    const byAgent = new Map<string, Set<string>>();
+    for (const c of results) {
+      if (!c?.modelUsed) continue;
+      if (!byAgent.has(c.agent)) byAgent.set(c.agent, new Set());
+      byAgent.get(c.agent)!.add(c.modelUsed);
+    }
+    if (byAgent.size) {
+      const lines = [...byAgent].map(([a, m]) => `  ${a} -> ${[...m].join(", ")}`);
+      console.log(`\nmodels actually served:\n${lines.join("\n")}`);
+      for (const [agent, models] of byAgent) {
+        const one = models.size === 1 ? [...models][0] : "";
+        if (one && !one.toLowerCase().includes(agent.toLowerCase())) {
+          console.log(
+            `\n  note: the column "${agent}" was served ${one}. An agent name is not a model.` +
+              `\n  Label the column with the model you requested if you publish this board.`,
+          );
+        }
+      }
+    }
     console.log(`\ntotal wall time ${Math.round((Date.now() - started) / 1000)}s`);
     const out = flags.out === undefined ? "TRIALS.md" : flags.out;
-    if (out !== "none" && typeof out === "string") {
+    if (out !== "none") {
+      if (typeof out !== "string") fail(`--out needs a file name or "none"`);
       writeMarkdown(out, renderMarkdown(suite, results, names));
       console.log(`wrote ${out}`);
     }

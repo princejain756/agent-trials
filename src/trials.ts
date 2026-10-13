@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   cpSync,
   existsSync,
@@ -40,6 +41,7 @@ export interface Cell {
   costUsd?: number;
   modelUsed?: string;
   verifyRestored?: string[];
+  checkersTampered?: string[];
   envWithheld?: number;
   skippedSymlinks?: string[];
   error?: string;
@@ -138,6 +140,16 @@ export function loadSuite(file: string): Suite {
     }
     seenIds.add(t.id);
     if (!t.verify && !raw.verify) throw new Error(`${file}: task "${t.id}" has no verify and suite has no default`);
+    // `sh -c ""` exits 0, so a blank verify scores every agent a pass without
+    // checking anything. Refuse it rather than report a board full of passes.
+    for (const [label, cmd] of [
+      [`task "${t.id}"`, t.verify],
+      ["suite", raw.verify],
+    ] as const) {
+      if (typeof cmd === "string" && cmd.trim() === "") {
+        throw new Error(`${file}: ${label} "verify" is empty; a blank command always exits 0 and would pass every cell`);
+      }
+    }
   }
   if (raw.verifyPaths !== undefined && !Array.isArray(raw.verifyPaths)) {
     throw new Error(`${file}: "verifyPaths" must be an array of repo-relative paths`);
@@ -413,7 +425,9 @@ export function pickModel(j: any): string | undefined {
   const direct = j?.model ?? j?.model_name ?? j?.modelId ?? j?.stats?.model;
   if (typeof direct === "string" && direct.trim()) return direct.trim();
   const usage = j?.modelUsage ?? j?.model_usage ?? j?.stats?.modelUsage;
-  if (usage && typeof usage === "object") {
+  // Arrays are objects, so an array here used to yield the key "0" as the model
+  // name. Only a plain object of model names is meaningful.
+  if (usage && typeof usage === "object" && !Array.isArray(usage)) {
     const keys = Object.keys(usage).filter((k) => k.trim());
     if (keys.length === 1) return keys[0];
     if (keys.length > 1) {
@@ -459,6 +473,42 @@ function protectedPaths(root: string, suite: Suite): string[] {
     if (st.isSymbolicLink()) return false;
     return true;
   });
+}
+
+// Restoring verifyPaths protects the checkers the suite declares, but a verify
+// command can also call a script that is not listed (verify: "sh checks/run.sh"
+// with no verifyPaths). An agent that rewrites that file then scores a pass on
+// code it wrote itself. The README told users to list their checkers; this
+// detects it instead, by fingerprinting every file the verify command mentions
+// before the agent runs and refusing a pass when one changed underneath.
+export function checkerPathsFrom(verifyCmd: string): string[] {
+  const out = new Set<string>();
+  // Path-looking tokens: contain a slash, or end in a script extension.
+  for (const raw of verifyCmd.split(/[\s;|&()<>]+/)) {
+    const tok = raw.replace(/^['"]|['"]$/g, "");
+    if (!tok || tok.startsWith("-")) continue;
+    if (/^[a-z0-9_./-]+$/i.test(tok) && (tok.includes("/") || /\.(sh|mjs|cjs|js|py|rb|pl)$/i.test(tok))) {
+      out.add(tok);
+    }
+  }
+  return [...out];
+}
+
+function fingerprintFiles(root: string, rels: string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const rel of rels) {
+    try {
+      const abs = path.resolve(root, rel);
+      // Never follow a path out of the sandbox.
+      if (!abs.startsWith(path.resolve(root) + path.sep)) continue;
+      const st = lstatSync(abs);
+      if (!st.isFile()) continue;
+      out[rel] = createHash("sha256").update(readFileSync(abs)).digest("hex");
+    } catch {
+      /* absent before the run is fine; absence after is caught below */
+    }
+  }
+  return out;
 }
 
 export interface RunOpts {
@@ -544,13 +594,18 @@ export async function runSuite(opts: RunOpts): Promise<Cell[]> {
         }
         const argv = spec.argv.map((a) => (a === "{prompt}" ? task.prompt : a));
         if (!spec.argv.includes("{prompt}")) argv.push(task.prompt);
+        // Fingerprint the checkers before the agent can touch them, so a
+        // rewritten checker cannot be mistaken for a genuine pass.
+        const verifyCmdForCell = task.verify ?? suite.verify!;
+        const checkers = checkerPathsFrom(verifyCmdForCell);
+        const before = fingerprintFiles(sandbox, checkers);
         const agentRes = await runCmd(argv, sandbox, timeoutMs, env);
         out.agentExit = agentRes.code;
         if (spec.resultJson) Object.assign(out, parseAgentJson(agentRes.stdout));
         if (agentRes.code === null) {
           out.error = agentRes.timedOut ? "timeout" : `spawn failed: ${agentRes.stderr.slice(-160)}`;
         }
-        const verifyCmd = task.verify ?? suite.verify!;
+        const verifyCmd = verifyCmdForCell;
         const restored = protectedPaths(root, suite);
         for (const rel of restored) {
           const target = path.join(sandbox, rel);
@@ -561,9 +616,21 @@ export async function runSuite(opts: RunOpts): Promise<Cell[]> {
           cpSync(path.join(root, rel), target, { recursive: true });
         }
         if (restored.length) out.verifyRestored = restored;
+        // Compare after restoring verifyPaths: anything still changed was
+        // neither protected nor put back, meaning the agent edited the checker.
+        // A file the agent created counts too (undefined -> a hash), because a
+        // verify command that runs a script the agent just wrote is grading the
+        // agent's own work.
+        const after = fingerprintFiles(sandbox, checkers);
+        const tampered = checkers.filter((rel) => before[rel] !== after[rel]);
         const v = await runCmd(["sh", "-c", verifyCmd], sandbox, timeoutMs, env);
         out.verifyExit = v.code;
-        out.pass = out.agentExit === 0 && v.code === 0;
+        if (tampered.length) {
+          out.checkersTampered = tampered;
+          const verb = tampered.map((rel) => (before[rel] === undefined ? "created" : "changed"));
+          out.error = `the agent ${[...new Set(verb)].join("/")} ${tampered.join(", ")}, which the verify command runs`;
+        }
+        out.pass = out.agentExit === 0 && v.code === 0 && tampered.length === 0;
       } catch (err) {
         out.error = err instanceof Error ? err.message : String(err);
       } finally {

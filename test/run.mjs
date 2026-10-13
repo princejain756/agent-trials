@@ -2,7 +2,7 @@
 // No real agent CLIs needed. Run: npm run build && node test/run.mjs
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -345,6 +345,9 @@ const badSuites = [
   [{ timeoutSec: -5, tasks: [{ id: "t1", prompt: "p", verify: "true" }] }, /positive number/],
   [{ timeoutSec: "soon", tasks: [{ id: "t1", prompt: "p", verify: "true" }] }, /positive number/],
   [{ allowedEnv: "PATH", tasks: [{ id: "t1", prompt: "p", verify: "true" }] }, /allowedEnv/],
+  // `sh -c ""` exits 0, so a blank verify would pass every cell unchecked.
+  [{ tasks: [{ id: "t1", prompt: "p", verify: "   " }] }, /empty/],
+  [{ verify: "\t", tasks: [{ id: "t1", prompt: "p", verify: "true" }] }, /empty/],
 ];
 for (const [suiteBody, pattern] of badSuites) {
   const f = path.join(work, `bad-${Math.random().toString(36).slice(2)}.json`);
@@ -367,6 +370,179 @@ const hugeJobs = spawnSync(
   { encoding: "utf-8", timeout: 60_000, env: cliEnv },
 );
 assert.notEqual(hugeJobs.status, 0, "absurd --jobs should be rejected");
+
+// --- a column labeled "haiku" must not silently be another model -----------
+
+// A published board claimed "haiku" beat two larger models. The JSON showed the
+// haiku column was served claude-sonnet-4-6, so the comparison was against a
+// model that never ran. The CLI now reports what was actually served.
+const modelDir = mkdtempSync(path.join(work, "model-"));
+const fakeAgent = path.join(modelDir, "fake.sh");
+writeFileSync(
+  fakeAgent,
+  '#!/bin/sh\necho \'{"modelUsage":{"claude-sonnet-4-6":{"output_tokens":5}}}\'\nexit 0\n',
+);
+chmodSync(fakeAgent, 0o755);
+writeFileSync(
+  path.join(modelDir, "suite.json"),
+  JSON.stringify({
+    tasks: [{ id: "t1", prompt: "go", verify: "true" }],
+    agents: {
+      haiku: { run: ["sh", fakeAgent], resultJson: true },
+      "claude-sonnet-4-6": { run: ["sh", fakeAgent], resultJson: true },
+    },
+  }),
+);
+
+function runLabel(agent) {
+  return spawnSync(
+    process.execPath,
+    [cli, "run", "--suite", path.join(modelDir, "suite.json"), "--agents", agent, "--root", modelDir, "--out", "none"],
+    { encoding: "utf-8", timeout: 60_000, env: cliEnv },
+  );
+}
+
+const mislabeled = runLabel("haiku");
+assert.equal(mislabeled.status, 0, mislabeled.stderr);
+assert.match(mislabeled.stdout, /models actually served/, "did not report the served model");
+assert.match(mislabeled.stdout, /"haiku" was served claude-sonnet-4-6/, "did not flag the mismatch");
+
+const honest = runLabel("claude-sonnet-4-6");
+assert.equal(honest.status, 0, honest.stderr);
+assert.match(honest.stdout, /models actually served/);
+assert.ok(
+  !/was served/.test(honest.stdout),
+  "warned about a label that matches the served model",
+);
+
+// --- an agent must not be able to pass by rewriting its own checker --------
+
+// verifyPaths covers declared checkers, but a verify command can call an
+// unlisted script (verify: "sh checks/run.sh"). Before this check, an agent
+// that overwrote checks/run.sh scored a pass on code it wrote itself.
+const tamperDir = mkdtempSync(path.join(work, "tamper-"));
+mkdirSync(path.join(tamperDir, "checks"), { recursive: true });
+writeFileSync(path.join(tamperDir, "checks", "run.sh"), "#!/bin/sh\ngrep -q FIXED src.txt\n");
+writeFileSync(path.join(tamperDir, "src.txt"), "BUG\n");
+writeFileSync(
+  path.join(tamperDir, "suite.json"),
+  JSON.stringify({
+    tasks: [{ id: "t1", prompt: "fix it", verify: "sh checks/run.sh" }],
+    agents: {
+      honest: { run: ["sh", "-c", "printf FIXED\\n > src.txt; true"] },
+      lazy: { run: ["sh", "-c", "true"] },
+      cheater: { run: ["sh", "-c", 'printf "#!/bin/sh\\nexit 0\\n" > checks/run.sh; true'] },
+    },
+  }),
+);
+
+function runAgent(agent, outName) {
+  const out = path.join(tamperDir, outName);
+  const res = spawnSync(
+    process.execPath,
+    [cli, "run", "--suite", path.join(tamperDir, "suite.json"), "--agents", agent, "--root", tamperDir, "--out", "none", "--json", out],
+    { encoding: "utf-8", timeout: 120_000, env: cliEnv },
+  );
+  assert.equal(res.status, 0, `${agent} run failed: ${res.stderr.slice(0, 200)}`);
+  return JSON.parse(readFileSync(out, "utf-8"))[0];
+}
+
+const honestCell = runAgent("honest", "honest.json");
+assert.equal(honestCell.pass, true, "an agent that fixes the code should pass");
+assert.equal(honestCell.checkersTampered, undefined, "honest run was flagged as tampering");
+
+const lazyCell = runAgent("lazy", "lazy.json");
+assert.equal(lazyCell.pass, false, "an agent that changes nothing should not pass");
+
+const cheatCell = runAgent("cheater", "cheater.json");
+assert.equal(cheatCell.pass, false, "an agent that rewrote its checker must not pass");
+assert.deepEqual(cheatCell.checkersTampered, ["checks/run.sh"], "tampering was not reported");
+assert.match(String(cheatCell.error), /created|changed/, "no explanation for the tampered cell");
+
+// The working copy must be untouched: only sandbox copies are writable.
+assert.equal(readFileSync(path.join(tamperDir, "src.txt"), "utf-8"), "BUG\n", "source repo was modified");
+assert.match(
+  readFileSync(path.join(tamperDir, "checks", "run.sh"), "utf-8"),
+  /grep -q FIXED/,
+  "checker in the source repo was modified",
+);
+
+// --- flag parsing must not guess --------------------------------------------
+
+// The parser used to fall back to "boolean" for any flag with no following
+// value, so `--out --agents sleeper` became `--out=true` and `--root --out
+// none` became `--root="--out"`, silently discarding the rest of the command
+// line. Unknown flags were ignored entirely and the run continued on defaults.
+const badFlagCases = [
+  { argv: ["--totally-bogus"], pattern: /unknown flag/ },
+  { argv: ["--out", "--agents", "ok-agent"], pattern: /--out needs a value/ },
+  { argv: ["--suite", suiteFile], pattern: /--suite was given more than once/ },
+  { argv: ["--out"], pattern: /--out needs a value/ },
+  { argv: ["--unsafe", "--unsafe"], pattern: /more than once/ },
+  { argv: ["stray-positional"], pattern: /unexpected argument/ },
+];
+for (const { argv, pattern } of badFlagCases) {
+  const res = spawnSync(
+    process.execPath,
+    [cli, "run", "--suite", suiteFile, "--agents", "ok-agent", "--root", fixture, ...argv],
+    { encoding: "utf-8", timeout: 60_000, env: cliEnv },
+  );
+  assert.notEqual(res.status, 0, `should reject ${argv.join(" ")}`);
+  assert.match(res.stderr, pattern, `wrong message for ${argv.join(" ")}: ${res.stderr.slice(0, 120)}`);
+}
+
+// A value flag followed by another flag must be refused rather than swallowing
+// it. Checked separately because these cases omit the --root the loop injects.
+for (const argv of [["--root", "--out", "none"], ["--agents", "--unsafe"], ["--json", "--out"]]) {
+  const res = spawnSync(process.execPath, [cli, "run", ...argv], {
+    encoding: "utf-8",
+    timeout: 60_000,
+    env: cliEnv,
+  });
+  assert.notEqual(res.status, 0, `should reject ${argv.join(" ")}`);
+  assert.match(
+    res.stderr,
+    new RegExp(`${argv[0]} needs a value`),
+    `${argv.join(" ")} should report the missing value, got: ${res.stderr.slice(0, 120)}`,
+  );
+}
+
+// The same command line must still work when written correctly.
+const goodFlags = spawnSync(
+  process.execPath,
+  [cli, "run", "--suite", suiteFile, "--agents", "ok-agent", "--root", fixture, "--jobs", "2", "--out", "none"],
+  { encoding: "utf-8", timeout: 60_000, env: cliEnv },
+);
+assert.equal(goodFlags.status, 0, "valid flag combination should run: " + goodFlags.stderr);
+
+// --- the shipped starter suite must contain a verify that can fail ----------
+
+// `agent-trials init` used to write `verify: "git diff --quiet || true"`, which
+// passes whether or not the agent changed anything. First contact with the tool
+// then taught a checker that checks nothing.
+const starterDir = mkdtempSync(path.join(work, "starter-"));
+execFileSync(process.execPath, [cli, "init", "--suite", path.join(starterDir, "trials.json")], {
+  encoding: "utf-8",
+  timeout: 30_000,
+  env: cliEnv,
+});
+const starter = JSON.parse(readFileSync(path.join(starterDir, "trials.json"), "utf-8"));
+const starterVerify = starter.tasks[0].verify;
+assert.ok(starterVerify && starterVerify.trim(), "starter task has no verify");
+assert.ok(
+  !/\|\|\s*true\s*$/.test(starterVerify),
+  `starter verify ends in "|| true" and can never fail: ${starterVerify}`,
+);
+// Prove it: in a git repo with a clean README the check must exit non-zero.
+execFileSync("git", ["init", "-q", "."], { cwd: starterDir });
+writeFileSync(path.join(starterDir, "README.md"), "hello\n");
+execFileSync("git", ["add", "-A"], { cwd: starterDir });
+execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"], { cwd: starterDir });
+const untouched = spawnSync("sh", ["-c", starterVerify], { cwd: starterDir, encoding: "utf-8" });
+assert.notEqual(untouched.status, 0, "starter verify passed with nothing changed, so it measures nothing");
+writeFileSync(path.join(starterDir, "README.md"), "hello\nworld\n");
+const touched = spawnSync("sh", ["-c", starterVerify], { cwd: starterDir, encoding: "utf-8" });
+assert.equal(touched.status, 0, "starter verify failed after a real change: " + touched.stderr);
 
 // --- deterministic --json ordering ------------------------------------------
 
@@ -403,6 +579,72 @@ for (const entry of readdirSync(linkCopy, { withFileTypes: true })) {
 }
 assert.deepEqual(copiedTargets, [], "symlinks were preserved into the working copy");
 assert.ok(!existsSync(path.join(linkCopy, "linked-dir")), "symlinked dir leaked its target into the copy");
+
+// --- the shipped example suite must actually measure its own claim ----------
+
+// examples/tinylib/verify/slug-test.mjs once only ran the agent's test file and
+// checked its exit code. A file containing nothing but `console.log("ok")` then
+// scored a pass, so the example board reported measurements for a task that was
+// never checked. Guards against the whole class: a checker that cannot fail.
+const exampleVerify = path.join(repo, "examples", "tinylib", "verify", "slug-test.mjs");
+if (existsSync(exampleVerify)) {
+  const slugCases = [
+    { name: "hollow file that asserts nothing", test: 'console.log("ok");\n', expectPass: false },
+    {
+      name: "real test file",
+      test: [
+        'import assert from "node:assert/strict";',
+        'import { slugify } from "../lib.js";',
+        'assert.equal(slugify("a b"), "a-b");',
+        'assert.equal(slugify("Ab"), "ab");',
+        'assert.equal(slugify("a!b"), "a-b");',
+        "",
+      ].join("\n"),
+      expectPass: true,
+    },
+    {
+      name: "real test file against a broken slugify",
+      test: [
+        'import assert from "node:assert/strict";',
+        'import { slugify } from "../lib.js";',
+        'assert.equal(slugify("a b"), "a-b");',
+        'assert.equal(slugify("Ab"), "ab");',
+        'assert.equal(slugify("a!b"), "a-b");',
+        "",
+      ].join("\n"),
+      breakSlugify: true,
+      expectPass: false,
+    },
+    { name: "assertions that all fail", test: 'import assert from "node:assert/strict";\nassert.equal(1, 2);\nassert.equal(1, 2);\nassert.equal(1, 2);\n', expectPass: false },
+    { name: "no test file", test: null, expectPass: false },
+  ];
+  for (const c of slugCases) {
+    const dir = mkdtempSync(path.join(work, "slugcase-"));
+    cpSync(path.join(repo, "examples", "tinylib"), dir, { recursive: true });
+    mkdirSync(path.join(dir, "test"), { recursive: true });
+    if (c.test === null) rmSync(path.join(dir, "test"), { recursive: true, force: true });
+    else writeFileSync(path.join(dir, "test", "slug.test.mjs"), c.test);
+    if (c.breakSlugify) {
+      writeFileSync(
+        path.join(dir, "lib.js"),
+        "export function clamp(n,lo,hi){return Math.min(Math.max(n,lo),hi);}\n" +
+          "export function divide(a,b){if(b===0)throw new RangeError(\"x\");return a/b;}\n" +
+          "export function slugify(s){return s;}\n",
+      );
+    }
+    const res = spawnSync(process.execPath, [path.join(dir, "verify", "slug-test.mjs")], {
+      encoding: "utf-8",
+      cwd: dir,
+      timeout: 30_000,
+    });
+    assert.equal(
+      res.status === 0,
+      c.expectPass,
+      `example slug-test checker ${c.expectPass ? "should pass" : "should FAIL"} for: ${c.name}`,
+    );
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 rmSync(work, { recursive: true, force: true });
 console.log("agent-trials self-check passed");
