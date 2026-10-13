@@ -9,40 +9,41 @@
     background:repeating-linear-gradient(0deg,transparent 0 3px,rgba(88,166,255,.03) 3px 4px); }
   .frame { position:absolute; inset:48px; display:flex; flex-direction:column; }
   .brand { font-size:20px; letter-spacing:.28em; color:#58a6ff; font-weight:600; }
-  .brand em { font-style:normal; color:#8b949e; }
-  .mid { display:flex; align-items:center; gap:52px; margin:36px 0 30px; }
-  .grade { font-size:170px; font-weight:800; color:#e3b341; line-height:.9;
-    text-shadow:0 0 60px rgba(227,179,65,.3); }
-  .grade small { font-size:52px; color:#8b949e; font-weight:700; }
-  .block .big { font-size:44px; font-weight:700; line-height:1.15; }
-  .block .big b { color:#f85149; }
-  .block .sub { margin-top:14px; font-size:19px; color:#8b949e; }
+  .brand em { font-style:normal; color:#8b949e; text-transform:none; letter-spacing:.02em; }
+  .mid { display:flex; align-items:center; gap:48px; margin:52px 0 40px; }
+  .grade { font-size:104px; font-weight:800; color:#f85149; line-height:.95;
+    text-shadow:0 0 60px rgba(248,81,73,.28); flex-shrink:0; }
+  .grade small { display:block; font-size:22px; color:#8b949e; font-weight:700;
+    letter-spacing:.1em; margin-top:10px; }
+  .block .big { font-size:44px; font-weight:700; line-height:1.16; }
+  .block .big b { color:#3fb950; }
+  .block .sub { margin-top:16px; font-size:20px; color:#8b949e; line-height:1.5; }
   .findings { display:flex; gap:14px; margin-top:8px; }
   .chip { border:1px solid #30363d; border-radius:999px; padding:9px 18px;
-    font-size:17px; color:#c9d1d9; background:#111418; }
+    font-size:16px; color:#c9d1d9; background:#111418; }
   .chip i { font-style:normal; color:#d29922; }
   .foot { margin-top:auto; display:flex; justify-content:space-between; align-items:flex-end;
-    border-top:1px solid #21262d; padding-top:22px; }
-  .cmd { font-size:26px; color:#3fb950; font-weight:700; }
+    border-top:1px solid #21262d; padding-top:20px; }
+  .cmd { font-size:25px; color:#3fb950; font-weight:700; }
   .cmd::before { content:"$ "; color:#8b949e; }
-  .note { font-size:15px; color:#6e7681; text-align:center; }
-  .gh { font-size:17px; color:#6e7681; }
+  .note { font-size:14px; color:#6e7681; text-align:center; line-height:1.5; }
+  .gh { font-size:16px; color:#6e7681; }
 </style>
 <body>
 <div class="scan"></div>
 <div class="frame">
-  <div class="brand">AGENT&nbsp;TRIALS<em> // interview your coding agent</em></div>
+  <div class="brand">AGENT&nbsp;TRIALS<em> // run your own tasks through every agent CLI</em></div>
   <div class="mid">
-    <div class="grade">3<small> tasks</small></div>
+    <div class="grade">exit 0<small>IS NOT A VERDICT</small></div>
     <div class="block">
-      <div class="big">A smoke-test runner<br>for coding agents.</div>
-      <div class="sub">same 3 tasks through claude / codex / gemini or any CLI - your repo, your tasks, your verify command</div>
+      <div class="big">A checker you own,<br>that the agent <b>cannot edit</b>.</div>
+      <div class="sub">named checkers are restored after the agent runs, then fingerprint-checked. A rewritten checker fails the cell.</div>
     </div>
   </div>
   <div class="findings">
-    <div class="chip"><i>trusted</i> suites only</div>
-    <div class="chip">pass = <i>your</i> verify exits 0</div>
-    <div class="chip"><i>cost</i> per task, when reported</div>
+    <div class="chip">pass = <i>your</i> command exits 0</div>
+    <div class="chip">records the model <i>actually served</i></div>
+    <div class="chip">credentials withheld from the copy</div>
   </div>
   <div class="foot">
     <div class="cmd">npx agent-trials</div>
@@ -51,3 +52,4 @@
   </div>
 </div>
 </body>
+</html>

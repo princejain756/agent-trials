@@ -1,10 +1,10 @@
 # agent-trials
 
+![agent-trials: a checker you own, that the agent cannot edit](hero.png)
+
 Interview your coding agent before you ship with it.
 
 `agent-trials` runs the same task suite through every coding agent CLI you have installed and prints a scoreboard: who passed, how long they took, what they spent. Each task gets a temporary working copy. Commands still run on your host.
-
-![demo](demo.png)
 
 ## why
 
@@ -87,6 +87,8 @@ The `--unsafe` gate is not limited to the builtins. Any agent whose argv contain
 ## a real run
 
 `examples/tinylib` is a 3-function library with planted bugs. Same 3 tasks, 3 model variants of the same agent CLI (`claude --model`):
+
+![a real agent-trials run, including the served-model warning](demo.png)
 
 ```
 agent-trials · 3 tasks · 3 agents

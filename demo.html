@@ -4,16 +4,17 @@
 <meta charset="utf-8">
 <style>
   body { margin: 0; background: #0b0e14; display: flex; align-items: center; justify-content: center; min-height: 100vh; font-family: "SF Mono", Menlo, monospace; }
-  .term { width: 980px; margin: 40px; border-radius: 12px; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,.6); background: #0d1117; border: 1px solid #21262d; }
+  .term { width: 1010px; margin: 40px; border-radius: 12px; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,.6); background: #0d1117; border: 1px solid #21262d; }
   .bar { display: flex; gap: 8px; padding: 14px 16px; background: #161b22; border-bottom: 1px solid #21262d; align-items: center; }
   .dot { width: 12px; height: 12px; border-radius: 50%; }
   .r { background: #ff5f57; } .y { background: #febc2e; } .g { background: #28c840; }
   .title { margin-left: 12px; color: #7d8590; font-size: 13px; }
-  pre { margin: 0; padding: 28px 32px 34px; font-size: 16.5px; line-height: 1.62; color: #c9d1d9; }
+  pre { margin: 0; padding: 26px 32px 32px; font-size: 15.5px; line-height: 1.58; color: #c9d1d9; }
   .p { color: #79c0ff; } .dim { color: #7d8590; }
   .big { color: #e3b341; font-weight: 700; }
   .pass { color: #3fb950; } .fail { color: #f85149; }
   .flag { color: #ffa198; }
+  .warn { color: #d29922; }
 </style>
 </head>
 <body>
@@ -23,18 +24,24 @@
 
 <span class="dim">agent-trials · 3 tasks · 3 agents</span>
 
-                  opus      sonnet       haiku
-fix-clamp    <span class="pass">pass 141.3s</span>  <span class="pass">pass 44.2s</span>   <span class="pass">pass 60.9s</span>
-divide-guard <span class="fail">fail 96.1s</span>   <span class="pass">pass 72.1s</span>  <span class="pass">pass 118.6s</span>
-slug-test    <span class="pass">pass 253.4s</span>  <span class="fail">fail 124.4s</span>   <span class="pass">pass 50s</span>
+                      opus      sonnet       haiku
+fix-clamp         <span class="pass">pass 42s</span>  <span class="pass">pass 35.6s</span>  <span class="pass">pass 44.1s</span>
+divide-guard      <span class="pass">pass 39s</span>  <span class="pass">pass 30.9s</span>  <span class="pass">pass 34.7s</span>
+slug-test       <span class="fail">fail 25.9s</span>  <span class="pass">pass 63.1s</span>    <span class="pass">pass 38s</span>
 
-score              2/3         2/3           <span class="big">3/3</span>
-median          141.3s       72.1s         60.9s
-cost             $1.11       $1.10         <span class="flag">$2.06</span>
+score                  2/3         3/3         3/3
+median                 39s       35.6s         38s
+cost                 $2.20       $0.93       $1.74
 
-<span class="dim">One toy-suite run; requested aliases, not verified model identities.</span>
+models actually served:
+  opus -> claude-opus-5-5
+  sonnet -> claude-sonnet-5-5
+  haiku -> <span class="warn">claude-sonnet-4-6</span>
 
-<span class="dim">CLI-reported costs; no general model ranking.</span>
+  <span class="warn">note: the column "haiku" was served claude-sonnet-4-6.</span>
+  <span class="warn">An agent name is not a model.</span>
+
+<span class="dim">Re-runs flip cells. A smoke test, not a ranking.</span>
 
 <span class="p">$</span> <span class="dim">|</span></pre>
 </div>
