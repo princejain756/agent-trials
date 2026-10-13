@@ -12,7 +12,22 @@ Public benchmarks score agents on tasks someone else picked. Your repo is not th
 
 ## execution safety
 
-A temporary working copy is not a security sandbox. Agents and suite commands run with your host permissions and environment; built-in Claude and Gemini commands disable approval prompts. Repository dotfiles and secrets may be copied. Use only trusted suites in a disposable VM with no sensitive files or credentials. Do not run this on a workstation containing private data.
+Agents are untrusted code. This tool runs them unattended, which means it is not, and cannot be, a security sandbox. What it does give you:
+
+- **credentials are withheld.** Agents and verify commands get a minimal environment: `PATH`, `HOME`, `SHELL`, `TERM`, `LANG`, `TMPDIR`, `TZ`. Everything else is dropped. `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, `AWS_SECRET_ACCESS_KEY` and the rest do not reach the child process. A suite can opt specific vars back in with `allowedEnv`.
+- **secret files are skipped.** `.env`, `.env.local`, `*.pem`, `*.key`, `id_rsa`, `.npmrc`, `.netrc`, `.aws/`, `.ssh/` and similar are never copied into the working copy. The run prints what it skipped. Ordinary files are left alone: `config.json`, `src/config.json`, `.env.example` and `credentials.js` are not secrets and stay put. `--allow-secrets` overrides this if you have a reason.
+- **symlinks are skipped.** A link copied into the working copy hands the agent a path out of your repo, and dereferencing one imports files that were never in the repo. Neither happens: links are dropped and the run lists them, so you can see why a linked directory looks empty inside a run.
+- **unsafe flags are opt-in.** Builtin `claude`, `codex`, and `gemini` specs disable approval prompts (`--dangerously-skip-permissions`, `--full-auto`, `--yolo`) and the tool refuses to run them without `--unsafe`. The check reads the argv, so redefining a builtin name, or writing a custom agent that passes a bypass flag, still requires `--unsafe`.
+- **timeouts kill the process group.** A timed-out cell signals the child and everything it spawned, so a killed `npm test` does not keep running against a directory that is being deleted.
+- **temporary copies are cleaned up.** On normal exit, on Ctrl-C, and on SIGTERM. `--keep` leaves them and prints the paths.
+
+What it still does not do:
+
+- the working copy is **not** a security sandbox. Agents run with your user's permissions and can read and write outside the copy. Skipping symlinks and secrets narrows what is handed to them; it does not contain them.
+- an agent with network access can exfiltrate anything it can read, including your source.
+- `verifyPaths` are restored from your repo after the agent runs so it cannot rewrite its own test, but a verify command that reads mutable state elsewhere can still be gamed. A `verifyPaths` entry that is itself a symlink is refused.
+
+**Run this in a disposable VM with no sensitive files or credentials.** That sentence was true before and it is still true now. Use only suites you trust.
 
 ## install
 
@@ -27,8 +42,10 @@ Works straight from GitHub too: `npx github:princejain756/agent-trials`.
 ```sh
 agent-trials init           # starter suite
 agent-trials doctor         # which agent CLIs are installed
-agent-trials run            # run the suite, print the board, write TRIALS.md
+agent-trials run --unsafe   # run the suite, print the board, write TRIALS.md
 ```
+
+`--unsafe` is required whenever the selected agents are the builtins, because those specs disable the agent's own approval prompts. Without it the run stops and tells you which agents it means.
 
 ## trials.json
 
@@ -37,6 +54,7 @@ agent-trials run            # run the suite, print the board, write TRIALS.md
   "verify": "npm test",
   "verifyPaths": ["verify"],
   "timeoutSec": 600,
+  "allowedEnv": ["ANTHROPIC_API_KEY"],
   "tasks": [
     {
       "id": "fix-cache",
@@ -50,17 +68,21 @@ agent-trials run            # run the suite, print the board, write TRIALS.md
 }
 ```
 
+`allowedEnv` is optional. Without it the agent gets only `PATH`, `HOME`, `SHELL`, `TERM`, `LANG`, `LC_ALL`, `TMPDIR`, `TZ`. Agent CLIs usually read their own auth from a config file in `HOME`, so you often do not need this; add a var only when a CLI genuinely needs it from the environment.
+
 Each cell (agent x task) works like this:
 
-1. your repo, minus `node_modules` and `.git`, is copied to a temporary working copy
+1. your repo, minus `node_modules`, `.git`, and secret-looking files, is copied to a temporary working copy
 2. optional `setup` command runs once (`npm ci` and friends)
-3. the agent runs headless on the task prompt, using the selected CLI flags, timeout-guarded
+3. the agent runs headless on the task prompt, using the selected CLI flags, timeout-guarded, with a minimal environment
 4. checker paths are restored from your repo, so the agent cannot rewrite its own test
 5. your `verify` command runs in the working copy; exit 0 means pass
 
 Step 4 restores `verifyPaths` from the suite, or a top-level `verify/` dir when `verifyPaths` is not set. A verify command that reads mutable state outside those paths can still be gamed; put your checkers in `verify/` or list them.
 
 Builtin agents: `claude`, `codex`, `gemini`. Custom agents are one argv array away: anything installed, any flags, `{prompt}` gets replaced with the task prompt.
+
+The `--unsafe` gate is not limited to the builtins. Any agent whose argv contains a known approval-bypass flag (`--dangerously-skip-permissions`, `--full-auto`, `--yolo`, `--force`, `--auto-approve` and friends) requires `--unsafe` too, including a custom agent that reuses a builtin name. A plain command like `["sh", "./agent.sh", "{prompt}"]` runs with no flag.
 
 ## a real run
 
@@ -98,6 +120,7 @@ Full results with per-cell costs: [LEADERBOARD.md](LEADERBOARD.md)
 - agent CLIs must be installed and logged in
 - macOS/Linux; the working copy and verify assume `sh`. Windows untested
 - scoring is binary per task. No partial credit for "almost fixed it"
+- the working copy is not a security sandbox. Credentials and secret files are withheld, but the agent still runs as your user on your machine. Use a disposable VM
 
 ## flags
 
@@ -110,6 +133,8 @@ Full results with per-cell costs: [LEADERBOARD.md](LEADERBOARD.md)
 | `--out <file>` | `TRIALS.md` | markdown report path, `none` skips |
 | `--json <file>` | - | raw per-cell results |
 | `--keep` | off | keep working copies under /tmp for debugging |
+| `--unsafe` | off | allow builtin agents to run with approval prompts disabled |
+| `--allow-secrets` | off | copy secret-looking files into the workdir |
 
 ## why the suite format is the point
 

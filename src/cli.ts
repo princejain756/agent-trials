@@ -4,6 +4,9 @@ import path from "node:path";
 import {
   agentInstalled,
   BUILTIN_AGENTS,
+  buildEnv,
+  findSecrets,
+  findSymlinks,
   loadSuite,
   renderBoard,
   renderMarkdown,
@@ -15,7 +18,7 @@ import {
   type Suite,
 } from "./trials.js";
 
-const VERSION = "1.0.1";
+const VERSION = "1.1.0";
 
 const HELP = `agent-trials ${VERSION}
 Interview your coding agent before you ship with it.
@@ -33,6 +36,8 @@ run flags:
   --out <file>      markdown report path (default: TRIALS.md, "none" skips)
   --json <file>     also write raw results JSON
   --keep            keep working copies for debugging
+  --unsafe          allow builtin agents to run with approval prompts disabled
+  --allow-secrets   copy secret-looking files (.env, *.pem, id_*) into the workdir
 `;
 
 const STARTER_SUITE = {
@@ -137,15 +142,54 @@ async function main() {
     const names = Object.keys(agents);
     if (names.length === 0) fail("no agents available. install claude/codex/gemini or define a custom agent");
 
-    const jobs = Math.max(1, Number(flags.jobs ?? 2) || 2);
+    const unsafeAgents = names.filter((n) => agents[n].unsafe);
+    if (unsafeAgents.length && !flags.unsafe) {
+      fail(
+        `these agents run with approval prompts disabled: ${unsafeAgents.join(", ")}\n` +
+          `  they can read and write anything your user can, inside the working copy or outside it.\n` +
+          `  pass --unsafe to accept that, or define a custom agent with your own flags.`,
+      );
+    }
+
+    const jobsFlag = flags.jobs;
+    let jobs = 2;
+    if (jobsFlag !== undefined) {
+      const n = Number(jobsFlag);
+      if (!Number.isInteger(n) || n < 1) {
+        fail(`--jobs needs a whole number of 1 or more, got "${jobsFlag}"`);
+      }
+      if (n > 32) {
+        fail(`--jobs ${n} is too many; each cell copies the whole repo, so cap it at 32`);
+      }
+      jobs = n;
+    }
     const keep = Boolean(flags.keep);
     const started = Date.now();
+    const { withheld } = buildEnv(suite.allowedEnv);
+    const secrets = findSecrets(root);
+    console.log(
+      `env: ${withheld.length} var(s) withheld from agents and verify commands` +
+        (suite.allowedEnv?.length ? ` (suite allows ${suite.allowedEnv.join(", ")})` : ""),
+    );
+    if (secrets.length) {
+      console.log(
+        `secrets: ${secrets.length} matching file(s) skipped from the working copy -> ${secrets.join(", ")}`,
+      );
+    }
+    const links = findSymlinks(root);
+    if (links.length) {
+      console.log(
+        `symlinks: ${links.length} skipped (not copied, so the agent cannot follow them out of the repo)` +
+          (links.length <= 5 ? ` -> ${links.join(", ")}` : ""),
+      );
+    }
     const results = await runSuite({
       root,
       suite,
       agents,
       jobs,
       keep,
+      allowSecrets: Boolean(flags["allow-secrets"]),
       onCell: (c: Cell) => {
         const verdict = verdictOf(c);
         console.log(`  [${verdict}] ${c.agent} · ${c.task} · ${c.sec}s`);
