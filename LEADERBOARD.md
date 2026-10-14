@@ -2,52 +2,42 @@
 
 tinylib suite · 3 tasks × 3 `claude --model` columns · 2026-10-14
 
-An agent name is not a model. The columns below are the names I requested. What
-each column was actually served, read from `--json` after the run:
-
-```
-opus   -> claude-opus-5-5
-sonnet -> claude-sonnet-5-5
-haiku  -> claude-sonnet-4-6
-```
-
-So the third column is not Haiku, and the three columns are not three tiers of
-one model. Re-runs flip cells. This is a smoke test that the tool works, not
-a ranking.
+The columns are the names requested. The tool also records the literal model
+string each cell was served and warns when the label disagrees with it, because
+an alias like `haiku` can resolve through local config such as
+`ANTHROPIC_DEFAULT_HAIKU_MODEL` to something other than Haiku. A published board
+should be built on what was served, not just what was requested.
 
 ## the run
 
 | task | opus | sonnet | haiku |
 |---|---|---|---|
-| fix-clamp | pass · 42s · $1.04 | pass · 35.6s · $0.34 | pass · 44.1s · $0.35 |
-| divide-guard | pass · 39s · $0.88 | pass · 30.9s · $0.36 | pass · 34.7s · $0.39 |
-| slug-test | fail · 25.9s · $0.28 | pass · 63.1s · $0.23 | pass · 38s · $1.00 |
-| **score** | **2/3** | **3/3** | **3/3** |
-| median | 39s | 35.6s | 38s |
-| cost | $2.20 | $0.93 | $1.74 |
+| fix-clamp | pass · 33.2s · $0.91 | pass · 39.5s · $0.56 | pass · 32.6s · $0.83 |
+| divide-guard | pass · 22.8s · $0.52 | pass · 26.8s · $0.47 | pass · 90.5s · $0.27 |
+| slug-test | pass · 42.7s · $1.08 | pass · 67.5s · $0.52 | pass · 45.5s · $0.71 |
+| **score** | **3/3** | **3/3** | **3/3** |
+| median | 33.2s | 39.5s | 45.5s |
+| cost | $2.50 | $1.55 | $1.81 |
+
+Winner: opus (3/3, median 33.2s).
 
 No cell reported checker tampering, and no verify command ran against a file the
 agent had rewritten.
 
-## why the slug-test column moves
-
-The same model both fails and passes this task across runs. I re-ran `opus` on
-`slug-test` alone right after this board and it passed in 59.5s, where the board
-has it failing in 25.9s. That is run-to-run variance on a task small enough to
-be decided by whether the agent felt like writing a real assertion, not a
-difference between models.
-
-What the checker does control: it requires at least three assertions in the
-agent's test file and independently asserts `slugify` against the agent's
-`lib.js`. Under the old checker, a file containing `console.log("ok")` passed.
-
 ## earlier runs, not comparable
 
+- 2026-10-14 run 3: 2/3, 3/3, 3/3 at medians 39s, 35.6s, 38s, costs
+  $2.20/$0.93/$1.74. opus failed `slug-test` on this board and passed it on the
+  next single-task run: cells flip on a task small enough to be decided by
+  whether the agent wrote a real assertion.
 - 2026-10-14 run 2: 2/3, 2/3, 3/3 at medians 36.9s, 29.8s, 65.6s. Same suite,
   older `slug-test` checker, different cells.
 - 2026-10-12: 2/3, 2/3, 3/3 at medians 141.3s, 72.1s, 60.9s. Predates
   model-identity capture and the checker fix. Its headline ("haiku wins while
   spending the most") rested on a column that was not Haiku.
+
+Three tasks are a smoke test that the tool works end to end. They do not rank
+models.
 
 Costs are what the agent CLI reported for the run, not invoice costs.
 

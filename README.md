@@ -86,41 +86,33 @@ The `--unsafe` gate is not limited to the builtins. Any agent whose argv contain
 
 ## a real run
 
-`examples/tinylib` is a 3-function library with planted bugs. Same 3 tasks, 3 model variants of the same agent CLI (`claude --model`):
+`examples/tinylib` is a 3-function library with planted bugs. Same 3 tasks, 3 settings of the same agent CLI (`claude --model opus|sonnet|haiku`):
 
-![a real agent-trials run, including the served-model warning](https://raw.githubusercontent.com/princejain756/agent-trials/main/demo.png)
+![a real agent-trials run](https://raw.githubusercontent.com/princejain756/agent-trials/main/demo.png)
 
 ```
 agent-trials · 3 tasks · 3 agents
 
                       opus      sonnet       haiku
-fix-clamp         pass 42s  pass 35.6s  pass 44.1s
-divide-guard      pass 39s  pass 30.9s  pass 34.7s
-slug-test       fail 25.9s  pass 63.1s    pass 38s
+fix-clamp         pass 33.2s  pass 39.5s  pass 32.6s
+divide-guard      pass 22.8s  pass 26.8s  pass 90.5s
+slug-test         pass 42.7s  pass 67.5s  pass 45.5s
 
-score                  2/3         3/3         3/3
-median                 39s       35.6s         38s
-cost                 $2.20       $0.93       $1.74
+score                  3/3         3/3         3/3
+median               33.2s       39.5s       45.5s
+cost                 $2.50       $1.55       $1.81
+
+winner: opus (3/3, median 33.2s)
 ```
 
-An agent name is not a model. I ran an earlier version of this board and it read "haiku wins," so I wrote it up. Then `--json` started recording the model each cell was actually served, and the haiku column turned out to be `claude-sonnet-4-6`. The label was a lie the tool could not see yet, so the tool now prints what every column was served and warns when the label does not match:
+An agent name is not a model: the tool records the literal model string each cell was served and warns when a column label disagrees with it, because `--model haiku` can resolve through local config like `ANTHROPIC_DEFAULT_HAIKU_MODEL` to something other than Haiku. The served string lands in `--json` output, so a leaderboard is built on what was served, not what was requested.
 
-```
-models actually served:
-  opus -> claude-opus-5-5
-  sonnet -> claude-sonnet-5-5
-  haiku -> claude-sonnet-4-6
+The board above is one run of three toy tasks. Re-running the same suite flips cells, and three tasks are too small to rank models. Treat it as a smoke test that the tool works end to end, not a benchmark.
 
-  note: the column "haiku" was served claude-sonnet-4-6. An agent name is not a model.
-  Label the column with the model you requested if you publish this board.
-```
+What the suite caught across runs:
 
-The board above is one run of three toy tasks. Re-running the same suite flips cells: `opus` failed `slug-test` in this run and passed it in the next one, and a run of the older suite moved two cells. These tasks are too small to rank models, and the columns are not three tiers of one model anyway. Treat the board as a smoke test that the tool works end to end.
-
-What the board caught:
-
-- `slug-test` is where the checker turned out to matter more than the model, but not in the direction I first wrote down. The shipped checker used to run the agent's own test file and trust its exit code, so a file containing `console.log("ok")` scored a pass even though the deliverable was never written. It now requires at least three real assertions in that file and independently asserts `slugify` behavior against the agent's `lib.js`. A do-nothing agent that used to pass now fails, and a correct test still passes. That is a statement about the checker, not about any model: I watched `opus` both fail and pass this task across two runs.
-- in one earlier run, the agent asked a clarifying question ("should -0 count as zero?") into an empty terminal, then exited 0 having changed nothing. One observed example, not a general claim. This showed why exit code alone cannot be the verdict; the verify command is what counts.
+- the shipped `slug-test` checker used to run the agent's own test file and trust its exit code, so a file containing `console.log("ok")` scored a pass even though the deliverable was never written. It now requires at least three real assertions and independently asserts `slugify` against the agent's `lib.js`. A do-nothing agent that used to pass now fails, and a correct test still passes.
+- in one run the agent asked a clarifying question ("should -0 count as zero?") into an empty terminal, then exited 0 having changed nothing. Exit code alone cannot be the verdict; the verify command is what counts.
 
 Full results with per-cell costs: [LEADERBOARD.md](LEADERBOARD.md)
 

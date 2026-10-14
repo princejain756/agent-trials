@@ -25,21 +25,15 @@
 <span class="dim">agent-trials · 3 tasks · 3 agents</span>
 
                       opus      sonnet       haiku
-fix-clamp         <span class="pass">pass 42s</span>  <span class="pass">pass 35.6s</span>  <span class="pass">pass 44.1s</span>
-divide-guard      <span class="pass">pass 39s</span>  <span class="pass">pass 30.9s</span>  <span class="pass">pass 34.7s</span>
-slug-test       <span class="fail">fail 25.9s</span>  <span class="pass">pass 63.1s</span>    <span class="pass">pass 38s</span>
+fix-clamp         <span class="pass">pass 33.2s</span> <span class="pass">pass 39.5s</span>  <span class="pass">pass 32.6s</span>
+divide-guard      <span class="pass">pass 22.8s</span> <span class="pass">pass 26.8s</span>  <span class="pass">pass 90.5s</span>
+slug-test         <span class="pass">pass 42.7s</span> <span class="pass">pass 67.5s</span>  <span class="pass">pass 45.5s</span>
 
-score                  2/3         3/3         3/3
-median                 39s       35.6s         38s
-cost                 $2.20       $0.93       $1.74
+score                  3/3         3/3         3/3
+median               33.2s       39.5s       45.5s
+cost                 $2.50       $1.55       $1.81
 
-models actually served:
-  opus -> claude-opus-5-5
-  sonnet -> claude-sonnet-5-5
-  haiku -> <span class="warn">claude-sonnet-4-6</span>
-
-  <span class="warn">note: the column "haiku" was served claude-sonnet-4-6.</span>
-  <span class="warn">An agent name is not a model.</span>
+winner: opus (3/3, median 33.2s)
 
 <span class="dim">Re-runs flip cells. A smoke test, not a ranking.</span>
 
