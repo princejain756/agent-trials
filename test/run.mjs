@@ -646,5 +646,32 @@ if (existsSync(exampleVerify)) {
   }
 }
 
+// --- --tasks filter, --fail-on-failure, and --flag=value --------------------
+const filteredJson = path.join(work, "filtered.json");
+const filteredRun = spawnSync(
+  process.execPath,
+  [cli, "run", `--suite=${suiteFile}`, `--root=${fixture}`, "--agents=ok-agent", "--tasks=t2", "--out=none", `--json=${filteredJson}`, "--fail-on-failure"],
+  { encoding: "utf-8", timeout: 60_000, env: cliEnv },
+);
+assert.equal(filteredRun.status, 0, "--tasks=t2 with passing ok-agent should exit 0: " + filteredRun.stderr);
+const filteredCells = JSON.parse(readFileSync(filteredJson, "utf-8"));
+assert.equal(filteredCells.length, 1, "--tasks=t2 should run only 1 cell");
+assert.equal(filteredCells[0].task, "t2");
+
+const failGateRun = spawnSync(
+  process.execPath,
+  [cli, "run", `--suite=${suiteFile}`, `--root=${fixture}`, "--agents=lazy-agent", "--tasks=t1", "--out=none", "--fail-on-failure"],
+  { encoding: "utf-8", timeout: 60_000, env: cliEnv },
+);
+assert.equal(failGateRun.status, 1, "--fail-on-failure should exit 1 when a cell fails");
+
+const unknownTaskRun = spawnSync(
+  process.execPath,
+  [cli, "run", `--suite=${suiteFile}`, `--root=${fixture}`, "--agents=ok-agent", "--tasks=no-such-task", "--out=none"],
+  { encoding: "utf-8", timeout: 60_000, env: cliEnv },
+);
+assert.notEqual(unknownTaskRun.status, 0, "unknown task id in --tasks should fail");
+assert.match(unknownTaskRun.stderr, /unknown task id/);
+
 rmSync(work, { recursive: true, force: true });
 console.log("agent-trials self-check passed");

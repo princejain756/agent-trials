@@ -31,10 +31,12 @@ usage:
 run flags:
   --suite <file>    suite file (default: trials.json)
   --agents a,b      only these agents (default: all known + custom)
+  --tasks t1,t2     only run these task ids (default: all tasks in suite)
   --root <dir>      repo to run on (default: cwd)
   --jobs <n>        parallel cells (default: 2)
   --out <file>      markdown report path (default: TRIALS.md, "none" skips)
   --json <file>     also write raw results JSON
+  --fail-on-failure exit 1 if any cell fails (for CI regression gates)
   --keep            keep working copies for debugging
   --unsafe          allow builtin agents to run with approval prompts disabled
   --allow-secrets   copy secret-looking files (.env, *.pem, id_*) into the workdir
@@ -66,8 +68,8 @@ const STARTER_SUITE = {
 // `--root --out none` as `--root="--out"`, silently dropping the rest of the
 // command line. A typo'd flag was ignored entirely and the run continued with
 // defaults, which is worse than refusing.
-const VALUE_FLAGS = new Set(["suite", "agents", "root", "jobs", "out", "json"]);
-const BOOL_FLAGS = new Set(["help", "version", "force", "keep", "unsafe", "allow-secrets"]);
+const VALUE_FLAGS = new Set(["suite", "agents", "tasks", "root", "jobs", "out", "json"]);
+const BOOL_FLAGS = new Set(["help", "version", "force", "keep", "unsafe", "allow-secrets", "fail-on-failure"]);
 const ALL_FLAGS = new Set([...VALUE_FLAGS, ...BOOL_FLAGS]);
 
 function parseArgs(argv: string[]): Record<string, string | boolean> {
@@ -77,7 +79,9 @@ function parseArgs(argv: string[]): Record<string, string | boolean> {
     if (!a.startsWith("--")) {
       fail(`unexpected argument "${a}" (flags start with --)`);
     }
-    const key = a.slice(2);
+    const eqIdx = a.indexOf("=");
+    const key = eqIdx === -1 ? a.slice(2) : a.slice(2, eqIdx);
+    const inlineVal = eqIdx === -1 ? undefined : a.slice(eqIdx + 1);
     if (!ALL_FLAGS.has(key)) {
       fail(`unknown flag "--${key}". known flags: ${[...ALL_FLAGS].map((f) => "--" + f).join(", ")}`);
     }
@@ -85,7 +89,13 @@ function parseArgs(argv: string[]): Record<string, string | boolean> {
       fail(`--${key} was given more than once`);
     }
     if (BOOL_FLAGS.has(key)) {
+      if (inlineVal !== undefined) fail(`--${key} does not take a value`);
       out[key] = true;
+      continue;
+    }
+    if (inlineVal !== undefined) {
+      if (inlineVal === "") fail(`--${key} needs a value, got nothing`);
+      out[key] = inlineVal;
       continue;
     }
     const next = argv[i + 1];
@@ -153,6 +163,16 @@ async function main() {
       fail(`no ${suiteFile}. run \`agent-trials init\` or pass --suite <file>`);
     }
     const suite = loadSuite(suiteFile);
+    if (typeof flags.tasks === "string") {
+      const want = new Set(flags.tasks.split(",").map((s) => s.trim()).filter(Boolean));
+      const known = new Set(suite.tasks.map((t) => t.id));
+      const unknown = [...want].filter((id) => !known.has(id));
+      if (unknown.length) {
+        fail(`unknown task id(s): ${unknown.join(", ")} (suite has: ${[...known].join(", ")})`);
+      }
+      suite.tasks = suite.tasks.filter((t) => want.has(t.id));
+      if (suite.tasks.length === 0) fail("no tasks matched --tasks");
+    }
     const root = path.resolve(typeof flags.root === "string" ? flags.root : ".");
     const agentNames =
       typeof flags.agents === "string" ? flags.agents.split(",") : undefined;
@@ -262,6 +282,9 @@ async function main() {
     if (typeof flags.json === "string") {
       writeFileSync(flags.json, JSON.stringify(results, null, 2) + "\n");
       console.log(`wrote ${flags.json}`);
+    }
+    if (flags["fail-on-failure"] && results.some((c) => !c.pass)) {
+      process.exit(1);
     }
     return;
   }
