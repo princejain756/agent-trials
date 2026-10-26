@@ -1,5 +1,9 @@
 # agent-trials
 
+[![npm](https://img.shields.io/npm/v/agent-trials)](https://www.npmjs.com/package/agent-trials)
+[![ci](https://github.com/princejain756/agent-trials/actions/workflows/ci.yml/badge.svg)](https://github.com/princejain756/agent-trials/actions/workflows/ci.yml)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 ![agent-trials: a checker you own, that the agent cannot edit](https://raw.githubusercontent.com/princejain756/agent-trials/main/hero.png)
 
 Interview your coding agent before you ship with it.
